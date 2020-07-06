@@ -922,6 +922,9 @@ let code_emitter = {
 		emit_code(node.code)
 	},
 	def_expr: (node, visit)=>{
+		if(!node.label.includes('@@')) {
+			return
+		}
 		emit_code(`${node.label}:`)
 		visit(node.prototype)
 		visit(node.value)
