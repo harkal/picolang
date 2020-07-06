@@ -30,13 +30,13 @@ let token = {
 	CONTINUE: 'CONTINUE',
 	BREAK: 'BREAK',
 
-	FN: 'FN'
+	DEF: 'DEF'
 }
 
 let keywords = {
 	'if': token.IF,
 	'else': token.ELSE, 
-	'fn': token.FN, 
+	'def': token.DEF, 
 	'while': token.WHILE,
 	'continue': token.CONTINUE,
 	'break': token.BREAK,
@@ -468,7 +468,7 @@ function make_parser(tokens) {
 	}
 
 	function parse_def_expr() {
-		consume(token.FN);
+		consume(token.DEF);
 		let prototype = parse_prototype()
 
 		let expr = parse_expr();
@@ -515,7 +515,7 @@ function make_parser(tokens) {
 			value: []
 		}
 		while(true) {
-			if (tok.type === token.FN) {
+			if (tok.type === token.DEF) {
 				n.value.push(parse_def_expr())
 				continue
 			}
