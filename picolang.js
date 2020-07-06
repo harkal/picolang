@@ -519,6 +519,8 @@ let literals_optimization_pass = {
 			node.RHS !== undefined && 
 			node.LHS.type == 'number_literal_expr' && 
 			node.RHS.type == 'number_literal_expr') {
+
+			let datatype = infer_type(node.LHS, node.RHS)
 			let value = 0
 			switch(node.bin_op) {
 				case token.ADD:
@@ -539,18 +541,40 @@ let literals_optimization_pass = {
 
 			return {
 				type: 'number_literal_expr',
-				value
+				value,
+				datatype,
 			}
 		}
 		return node
 	},
-	ident_expr: (node, visit)=>{
-		return node.value
+	if_expr: (node, visit)=>{
+		node.cond = visit(node.cond);
+		if (node.cond !== undefined && node.cond.type == 'number_literal_expr') {
+			if (node.cond.value === 0 && node.el !== undefined) {
+				return node.el
+			} else {
+				return node.th
+			}
+		}
 	},
-
-	// common: (node, visit) => {
-	// 	return node.value
-	// },
+	common: (node, visit)=>{
+		if(!node.hasOwnProperty('type')) {
+			return
+		}
+		for (var key in node) {
+			if (node.hasOwnProperty(key) && typeof node[key] === 'object') {
+				if (Array.isArray(node[key])) {
+					for(let i = 0 ; i < node[key].length ; i++) {
+						node[key][i] = visit(node[key][i])
+					}
+				} else {
+					if (node != node[key])
+						node[key] = visit(node[key])
+				}
+			}
+		}
+		return node
+	},
 }
 
 function infer_type(LHS, RHS) {
@@ -879,6 +903,12 @@ function add_parent_links(node, parent) {
 	node.parent = parent
 }
 
+function replacer(k, v) {
+	if (k === 'parent')
+		return undefined
+	else 
+		return v
+}
 
 let source_code = fs.readFileSync(process.argv[2], 'utf-8')
 let outFile = process.argv[3]
@@ -887,9 +917,13 @@ try {
 	let tokens = tokenizer(source_code)
 	let parser = make_parser(tokens)
 	let ast = parser()
-	add_parent_links(ast)
 
+	//console.log(JSON.stringify(ast, replacer, ' '))
 	ast = make_visitor(literals_optimization_pass)(ast)
+	// console.log('-----------------------opti')
+	// console.log(JSON.stringify(ast, replacer, ' '))
+
+	add_parent_links(ast)
 	ast = make_visitor(codegen_pass)(ast)
 	make_visitor(code_emitter)(ast)
 
