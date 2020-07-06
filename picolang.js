@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const { parse } = require('path');
 
 let token = {
 	LPAREN: '(',
@@ -25,6 +26,7 @@ let token = {
 
 	IF: 'IF',
 	ELSE: 'ELSE',
+	WHILE: 'WHILE',
 
 	FN: 'FN'
 }
@@ -33,6 +35,7 @@ let keywords = {
 	'if': token.IF,
 	'else': token.ELSE, 
 	'fn': token.FN, 
+	'while': token.WHILE,
 }
 
 let datatypes = {
@@ -388,6 +391,8 @@ function make_parser(tokens) {
 			return expr
 		} else if (tok.type === token.IF) {
 			return parse_if_expr();
+		} else if (tok.type === token.WHILE) {
+			return parse_while_expr();
 		}
 
 		let LHS = parse_primary_expr();
@@ -473,6 +478,17 @@ function make_parser(tokens) {
 			cond,
 			th,
 			el,
+		}
+	}
+
+	function parse_while_expr() {
+		consume(token.WHILE)
+		let cond = parse_expr();
+		let body = parse_expr();
+		return {
+			type: 'while_expr',
+			cond,
+			body,
 		}
 	}
 
@@ -747,6 +763,12 @@ let codegen_pass = {
 		node.code = ''
 		return node
 	},
+	while_expr: (node, visit)=>{
+		node.cond = visit(node.cond, node)
+		node.body = visit(node.body, node)
+		node.code = ''
+		return node
+	},
 	common: (node, visit)=>{
 		return visit(node.value, node)
 	}
@@ -796,6 +818,19 @@ let code_emitter = {
 		emit_code(`${else_label}:`)
 		if (node.el)
 			visit(node.el)
+		emit_code(`${exit_label}:`)
+	},
+	while_expr: (node, visit)=>{
+		let exit_label =  get_label('exit_')
+		let loop_label =  get_label('loop_')
+		
+		emit_code(`${loop_label}:`)
+		visit(node.cond)
+		emit_code(`\tPOP32\n\tJEQ ${exit_label}`);
+		
+		visit(node.body)
+
+		emit_code(`\tJMP ${loop_label}`);
 		emit_code(`${exit_label}:`)
 	},
 	common: (node, visit) => {
