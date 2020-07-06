@@ -585,7 +585,7 @@ let literals_optimization_pass = {
 	// },
 	common: (node, visit)=>{
 		if(!node.hasOwnProperty('type')) {
-			return
+			return node
 		}
 		for (var key in node) {
 			if (node.hasOwnProperty(key) && typeof node[key] === 'object') {
@@ -594,8 +594,7 @@ let literals_optimization_pass = {
 						node[key][i] = visit(node[key][i])
 					}
 				} else {
-					if (node != node[key])
-						node[key] = visit(node[key])
+					node[key] = visit(node[key])
 				}
 			}
 		}
@@ -784,6 +783,7 @@ let codegen_pass = {
 	},
 	call_expr: (node, visit)=>{
 		node.code = ''
+		let pops = ''
 		for(let i = 0 ; i < node.value.length ; i++) {
 			let v = visit(node.value[i], node)
 			if (v.datatype == datatypes.INT) {
@@ -794,13 +794,14 @@ let codegen_pass = {
 				throw TypeError('Not supported parameter type')
 			}
 			node.value[i] = v
+			pops += '\n\tPOP32'
 		}
 		let sym = get_symbol(node.parent, node.name.value.name)
 		if (!sym) 
 			throw TypeError('Undefined: ' + node.name.value.name)
 		if (sym.datatype !== datatypes.FUNCTION)
 			throw TypeError('Not callable: ' + sym.name)
-		node.code = `\tCALL ${sym.exp_name}\n\tLOAD32 [SFP - 7]`
+		node.code = `\tCALL ${sym.exp_name}${pops}\n\tLOAD32 [SFP - ${node.value.length * 4 + 8}]`
 		node.datatype = datatypes.FLOAT
 		return node
 	},
@@ -947,7 +948,7 @@ function make_visitor(visitor) {
 }
 
 function add_parent_links(node, parent) {
-	if(!node.hasOwnProperty('type')) {
+	if(!node || !node.hasOwnProperty('type')) {
 		return
 	}
 	for (var key in node) {
