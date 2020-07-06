@@ -427,12 +427,12 @@ function make_parser(tokens) {
 				})
 				continue;
 			} 
-			let expr = parse_expr();
+			let expr = parse_expr()
 			if (!expr) {
 				break
 			}
 			if (tok.type === 'eof')
-				break; 
+				break
 			n.value.push(expr)
 		}
 		return n
@@ -751,6 +751,10 @@ let codegen_pass = {
 		if (Array.isArray(node.value)) {
 			for(let i = 0 ; i < node.value.length ; i++) {
 				node.value[i] = visit(node.value[i], node)
+				// only the last expression returns
+				if(i < node.value.length-1) {
+					node.value[i].code += `\n\tPOP32`
+				}
 			}
 		}
 		return node
