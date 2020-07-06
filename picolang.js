@@ -12,16 +12,26 @@ let token = {
 	SUB: '-',
 	MUL: '*',
 	DIV: '/',
+	EQL: '==',
+	LSS: '<',	
+	GTR: '>',
+	LEQ: '<=',
+	GEQ: '>=',
+	NEQ: '!=',
+
+	NOT: '!',
 
 	COMMA: ',',
 
 	IF: 'IF',
-	THEN: 'THEN',
+	ELSE: 'ELSE',
+
 	FN: 'FN'
 }
 
 let keywords = {
 	'if': token.IF,
+	'else': token.ELSE, 
 	'fn': token.FN, 
 }
 
@@ -34,6 +44,12 @@ let datatypes = {
 
 let binop_precedence = {}
 binop_precedence[token.ASSIGN] = 2;
+binop_precedence[token.NEQ] = 10;
+binop_precedence[token.EQL] = 10;
+binop_precedence[token.LSS] = 10;
+binop_precedence[token.GTR] = 10;
+binop_precedence[token.LEQ] = 10;
+binop_precedence[token.GEQ] = 10;
 binop_precedence[token.ADD] = 20;
 binop_precedence[token.SUB] = 20;
 binop_precedence[token.MUL] = 40;
@@ -142,7 +158,6 @@ function tokenizer(input) {
 			case token.LBRACE:
 			case token.RBRACE:
 			case token.COMMA:
-			case token.ASSIGN:
 			case token.ADD:
 			case token.SUB:
 			case token.MUL:
@@ -152,6 +167,42 @@ function tokenizer(input) {
 				});
 			
 				current++;  
+				continue;
+			case token.ASSIGN:
+				if (input[current+1] == '=') {
+					tokens.push({type: token.EQL})
+					current++
+				} else {
+					tokens.push({type: char})
+				}
+				current++;
+				continue;
+			case token.LSS:
+				if (input[current+1] == '=') {
+					tokens.push({type: token.LEQ})
+					current++
+				} else {
+					tokens.push({type: char})
+				}
+				current++;
+				continue;
+			case token.GTR:
+				if (input[current+1] == '=') {
+					tokens.push({type: token.GEQ})
+					current++
+				} else {
+					tokens.push({type: char})
+				}
+				current++;
+				continue;
+			case token.NOT:
+				if (input[current+1] == '=') {
+					tokens.push({type: token.NEQ})
+					current++
+				} else {
+					tokens.push({type: char})
+				}
+				current++;
 				continue;
 			case '"':
 				value = '';
@@ -335,6 +386,8 @@ function make_parser(tokens) {
 			let expr = parse_comp_expr();
 			consume(token.RBRACE)
 			return expr
+		} else if (tok.type === token.IF) {
+			return parse_if_expr();
 		}
 
 		let LHS = parse_primary_expr();
@@ -402,6 +455,24 @@ function make_parser(tokens) {
 			type: 'def_expr',
 			prototype,
 			value: expr
+		}
+	}
+
+	function parse_if_expr() {
+		consume(token.IF)
+		let cond = parse_expr();
+		let th = parse_expr();
+		let el
+		if (tok.type === token.ELSE) {
+			consume(token.ELSE)
+			el = parse_expr()
+		}
+
+		return {
+			type: 'if_expr',
+			cond,
+			th,
+			el,
 		}
 	}
 
@@ -526,23 +597,61 @@ let codegen_pass = {
 		} else if(node.LHS.datatype === datatypes.INT && node.RHS.datatype === datatypes.FLOAT) {
 			node.LHS.code += '\n\tCONVF'
 		}
+		let m = '32'
+		if (node.datatype === datatypes.FLOAT) {
+			m = "F"
+		}
 		switch(node.bin_op) {
 			case token.ADD:
-				node.code = '\tADD'
+				node.code = '\tADD' + m
 				break;
 			case token.SUB:
-				node.code = '\tSUB'
+				node.code = '\tSUB' + m
 				break;
 			case token.MUL:
-				node.code = '\tMUL'
+				node.code = '\tMUL' + m
 				break;
 			case token.DIV:
-				node.code = '\tDIV'
+				node.code = '\tDIV' + m
 				break;
+			case token.EQL:{
+				let l = get_label('oper_')
+				let e = get_label('oper_')
+				node.code = `\tSUB${m}\n\tPOP32\n\tJEQ ${l}\n\tLOAD32 0\n\tJMP ${e}\n${l}:\n\tLOAD32 1\n${e}:`
+				break;
+			}
+			case token.NEQ:{
+				let l = get_label('oper_')
+				let e = get_label('oper_')
+				node.code = `\tSUB${m}\n\tPOP32\n\tJNE ${l}\n\tLOAD32 0\n\tJMP ${e}\n${l}:\n\tLOAD32 1\n${e}:`
+				break;
+			}
+			case token.GTR:{
+				let l = get_label('oper_')
+				let e = get_label('oper_')
+				node.code = `\tSUB${m}\n\tPOP32\n\tJGT ${l}\n\tLOAD32 0\n\tJMP ${e}\n${l}:\n\tLOAD32 1\n${e}:`
+				break;
+			}
+			case token.GEQ:{
+				let l = get_label('oper_')
+				let e = get_label('oper_')
+				node.code = `\tSUB${m}\n\tPOP32\n\tJGE ${l}\n\tLOAD32 0\n\tJMP ${e}\n${l}:\n\tLOAD32 1\n${e}:`
+				break;
+			}
+			case token.LSS:{
+				let l = get_label('oper_')
+				let e = get_label('oper_')
+				node.code = `\tSUB${m}\n\tPOP32\n\tJLT ${l}\n\tLOAD32 0\n\tJMP ${e}\n${l}:\n\tLOAD32 1\n${e}:`
+				break;
+			}
+			case token.LEQ:{
+				let l = get_label('oper_')
+				let e = get_label('oper_')
+				node.code = `\tSUB${m}\n\tPOP32\n\tJLE ${l}\n\tLOAD32 0\n\tJMP ${e}\n${l}:\n\tLOAD32 1\n${e}:`
+				break;
+			}
 		}
-		if (node.datatype === datatypes.FLOAT) {
-			node.code += "F"
-		}
+		
 		return node
 	},
 	ident: (node, visit)=>{
@@ -629,6 +738,15 @@ let codegen_pass = {
 		node.datatype = datatypes.FLOAT
 		return node
 	},
+	if_expr: (node, visit)=>{
+		node.cond = visit(node.cond, node)
+		node.th = visit(node.th, node)
+		if (node.el)
+			node.el = visit(node.el, node)
+		node.datatype = datatypes.FLOAT
+		node.code = ''
+		return node
+	},
 	common: (node, visit)=>{
 		return visit(node.value, node)
 	}
@@ -637,6 +755,12 @@ let codegen_pass = {
 let asm_code = ''
 function emit_code(str) {
 	asm_code += `${str}\n`
+}
+
+let label_count = 0
+function get_label(prefix) {
+	label_count++
+	return prefix + label_count
 }
 
 let code_emitter = {
@@ -661,6 +785,18 @@ let code_emitter = {
 		visit(node.prototype)
 		visit(node.value)
 		emit_code(node.code)
+	},
+	if_expr: (node, visit)=>{
+		visit(node.cond)
+		let exit_label =  get_label('exit_')
+		let else_label =  get_label('else_')
+		emit_code(`\tPOP32\n\tJEQ ${else_label}`);
+		visit(node.th)
+		emit_code(`\tJMP ${exit_label}`);
+		emit_code(`${else_label}:`)
+		if (node.el)
+			visit(node.el)
+		emit_code(`${exit_label}:`)
 	},
 	common: (node, visit) => {
 		if (node.label) {
@@ -713,7 +849,7 @@ let source_code = fs.readFileSync(process.argv[2], 'utf-8')
 let outFile = process.argv[3]
 if (!outFile)outFile = 'out.asm'
 try {
-    let tokens = tokenizer(source_code)
+	let tokens = tokenizer(source_code)
 	let parser = make_parser(tokens)
 	let ast = parser()
 	add_parent_links(ast)
@@ -722,7 +858,9 @@ try {
 	ast = make_visitor(codegen_pass)(ast)
 	make_visitor(code_emitter)(ast)
 
-	asm_code += emit_global_symbols(ast.st.symbols)
+	if (ast.st) {
+		asm_code += emit_global_symbols(ast.st.symbols)
+	}
 
     var buf = new Buffer.from(asm_code);
     fs.writeFileSync(outFile, buf);
