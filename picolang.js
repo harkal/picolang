@@ -69,6 +69,10 @@ const NUMBERS_OR_DOT = /[\.0-9]/;
 const NUMBER_INT = /^[0-9]+$/;
 const NUMBER_FLOAT = /^(\d+)?(\.\d+)?$/;
 
+function zip(arr1, arr2) { 
+	return arr1.map((k, i) => [k, arr2[i]])
+}
+
 function get_symbol(node, symbol_name, type) {
 	if (!node)
 		return null
@@ -117,6 +121,12 @@ function emit_global_symbols(symtable) {
 			case datatypes.FLOAT:
 				res += `${sym.exp_name}: resd\n`
 				break
+			case datatypes.FUNCTION:
+				if (sym.exp_name.includes('@@')) {
+					sym.node = make_visitor(codegen_pass)(sym.node)
+					make_visitor(code_emitter)(sym.node)
+				}
+				break;
 		}
 		
 	}
@@ -143,17 +153,21 @@ function get_decorated_fn_name(name, types) {
 function clone_ast(ast) {
 	if(ast === null || typeof(ast) !== 'object') {
 		return ast;
-	  }
-	
-	  var temp = {}
-	
-	  for(var key in ast) {
+	}
+
+	if (Array.isArray(ast)) {
+		return [...ast];
+	}
+
+	var temp = {}
+
+	for(var key in ast) {
 		if (key !== 'parent' && ast.hasOwnProperty(key)) {
-		  temp[key] = clone_ast(ast[key]);
+			temp[key] = clone_ast(ast[key]);
 		}
-	  }
-	
-	  return temp;
+	}
+
+	return temp;
 }
 
 function tokenizer(input) {
@@ -467,8 +481,10 @@ function make_parser(tokens) {
 		let fn_name = parse_ident();
 		consume(token.LPAREN);
 		let args = []
+		let arg_types = []
 		while(tok.type == 'ident') {
 			args.push(tok.value)
+			arg_types.push(datatypes.INT)
 			next()
 			if (tok.type !== token.COMMA) {
 				break;
@@ -479,7 +495,8 @@ function make_parser(tokens) {
 		return {
 			type: 'prototype',
 			name: fn_name,
-			args
+			args,
+			arg_types
 		}
 	}
 
@@ -623,6 +640,23 @@ function infer_type(LHS, RHS) {
 		return LHS.datatype
 	else 
 		return datatypes.FLOAT
+}
+
+function instantiate_template(node, name, arg_types) {
+	let sym = get_symbol(node.parent, name)
+	if (!sym) {
+		throw TypeError('Undefined: ' + name)
+	}
+	let fn_name = get_decorated_fn_name(name, arg_types)
+	let inst_sym = new_symbol(node.parent, fn_name, datatypes.FUNCTION)
+	inst_sym.node = clone_ast(sym.node)
+	inst_sym.node.prototype.name.name = fn_name
+	inst_sym.node.prototype.arg_types = arg_types
+	inst_sym.node.st.symbols = {}
+	add_parent_links(inst_sym.node)
+	inst_sym.node.parent = node.parent
+	// console.log(sym.node)
+	return inst_sym
 }
 
 const byteToHex = [];
@@ -778,12 +812,11 @@ let codegen_pass = {
 	prototype: (node, visit)=> {
 		node.code = ''
 		let spf_offset = 2
-
-		node.args.reverse().forEach(arg=>{
-			let sym = get_symbol(node.parent, arg)
+		zip(node.args, node.arg_types).reverse().forEach((v)=>{
+			let sym = get_symbol(node.parent, v[0])
 			if (sym) 
-				throw TypeError('defined '+ arg)
-			sym = new_symbol(node.parent, arg, datatypes.FLOAT)
+				throw TypeError('defined '+ v[0])
+			sym = new_symbol(node.parent, v[0], v[1])
 			sym.stack = spf_offset
 			spf_offset += 4
 			// node.code += `LOAD 0   ; ${sym.name}\n`
@@ -792,9 +825,10 @@ let codegen_pass = {
 	},
 	def_expr: (node, visit)=> {
 		let sym = get_symbol(node.parent, node.prototype.name.name)
-		if (sym) 
-			throw TypeError('Already defined: ' + node.prototype.fn_name)
-		sym = new_symbol(node.parent, node.prototype.name.name, datatypes.FUNCTION)
+		if (!sym) 
+			sym = new_symbol(node.parent, node.prototype.name.name, datatypes.FUNCTION)
+			
+		sym.node = node
 		node.label = sym.exp_name
 		node.prototype = visit(node.prototype, node);
 		node.value = visit(node.value, node);
@@ -804,21 +838,20 @@ let codegen_pass = {
 	call_expr: (node, visit)=>{
 		node.code = ''
 		let pops = ''
+		let arg_types = []
 		for(let i = 0 ; i < node.value.length ; i++) {
 			let v = visit(node.value[i], node)
-			if (v.datatype == datatypes.INT) {
-				v.code += "\n\tCONVF"
-			} else if (v.datatype == datatypes.FLOAT) {
-
-			} else {
-				throw TypeError('Not supported parameter type')
-			}
 			node.value[i] = v
 			pops += '\n\tPOP32'
+			arg_types.push(v.datatype)
 		}
-		let sym = get_symbol(node.parent, node.name.value.name)
-		if (!sym) 
-			throw TypeError('Undefined: ' + node.name.value.name)
+		let name = get_decorated_fn_name(node.name.value.name, arg_types)
+		let sym = get_symbol(node.parent, name)
+		if (!sym) {
+			sym = instantiate_template(node, node.name.value.name, arg_types)
+			if (!sym) 
+				throw TypeError('Undefined: ' + node.name.value.name)
+		}
 		if (sym.datatype !== datatypes.FUNCTION)
 			throw TypeError('Not callable: ' + sym.name)
 		node.code = `\tCALL ${sym.exp_name}${pops}\n\tLOAD32 [SFP - ${node.value.length * 4 + 8}]`
@@ -1008,9 +1041,12 @@ try {
 	ast = make_visitor(codegen_pass)(ast)
 	make_visitor(code_emitter)(ast)
 
+	let symbol_code = ''
 	if (ast.st) {
-		asm_code += emit_global_symbols(ast.st.symbols)
+		symbol_code += emit_global_symbols(ast.st.symbols)
 	}
+
+	asm_code += symbol_code
 
     var buf = new Buffer.from(asm_code);
     fs.writeFileSync(outFile, buf);
