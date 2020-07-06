@@ -140,6 +140,22 @@ function get_decorated_fn_name(name, types) {
 	return name
 }
 
+function clone_ast(ast) {
+	if(ast === null || typeof(ast) !== 'object') {
+		return ast;
+	  }
+	
+	  var temp = {}
+	
+	  for(var key in ast) {
+		if (key !== 'parent' && ast.hasOwnProperty(key)) {
+		  temp[key] = clone_ast(ast[key]);
+		}
+	  }
+	
+	  return temp;
+}
+
 function tokenizer(input) {
 	let current = 0;
 	let value;
@@ -982,7 +998,8 @@ try {
 	let parser = make_parser(tokens)
 	let ast = parser()
 
-	//console.log(JSON.stringify(ast, replacer, ' '))
+	// console.log(JSON.stringify(ast, replacer, ' '))
+
 	ast = make_visitor(literals_optimization_pass)(ast)
 	// console.log('-----------------------opti')
 	// console.log(JSON.stringify(ast, replacer, ' '))
