@@ -27,6 +27,8 @@ let token = {
 	IF: 'IF',
 	ELSE: 'ELSE',
 	WHILE: 'WHILE',
+	CONTINUE: 'CONTINUE',
+	BREAK: 'BREAK',
 
 	FN: 'FN'
 }
@@ -36,6 +38,8 @@ let keywords = {
 	'else': token.ELSE, 
 	'fn': token.FN, 
 	'while': token.WHILE,
+	'continue': token.CONTINUE,
+	'break': token.BREAK,
 }
 
 let datatypes = {
@@ -410,6 +414,19 @@ function make_parser(tokens) {
 		}
 		while(true)
 		{
+			if (tok.type === token.BREAK) {
+				consume(token.BREAK)
+				n.value.push({
+					type: 'break_stmt'
+				})
+				continue;
+			} else if (tok.type === token.CONTINUE) {
+				consume(token.CONTINUE)
+				n.value.push({
+					type: 'continue_stmt'
+				})
+				continue;
+			} 
 			let expr = parse_expr();
 			if (!expr) {
 				break
@@ -557,6 +574,15 @@ let literals_optimization_pass = {
 			}
 		}
 	},
+	// while_expr: (node, visit)=>{
+	// 	node.cond = visit(node.cond);
+	// 	if (node.cond !== undefined && node.cond.type == 'number_literal_expr') {
+	// 		if (node.cond.value !== 0 && node.body !== undefined) {
+	// 			return node.body
+	// 		}
+	// 		return node
+	// 	}
+	// },
 	common: (node, visit)=>{
 		if(!node.hasOwnProperty('type')) {
 			return
@@ -793,6 +819,12 @@ let codegen_pass = {
 		node.code = ''
 		return node
 	},
+	break_stmt: (node, visit)=>{
+		return node
+	},
+	continue_stmt: (node, visit)=>{
+		return node
+	},
 	common: (node, visit)=>{
 		return visit(node.value, node)
 	}
@@ -807,6 +839,15 @@ let label_count = 0
 function get_label(prefix) {
 	label_count++
 	return prefix + label_count
+}
+
+function get_key_up(n, key) {
+	if(n.hasOwnProperty(key)) {
+		return n[key]
+	} else if (n.parent) {
+		return get_key_up(n.parent, key)
+	}
+	return undefined
 }
 
 let code_emitter = {
@@ -847,15 +888,33 @@ let code_emitter = {
 	while_expr: (node, visit)=>{
 		let exit_label =  get_label('exit_')
 		let loop_label =  get_label('loop_')
+
+		node.exit_label = exit_label
+		node.loop_label = loop_label
 		
 		emit_code(`${loop_label}:`)
-		visit(node.cond)
-		emit_code(`\tPOP32\n\tJEQ ${exit_label}`);
-		
+
+		// Optimize the case we have an always true condition
+		if (node.cond.type === 'number_literal_expr' && node.cond.value === 1) {
+
+		} else {
+			visit(node.cond)
+			emit_code(`\tPOP32\n\tJEQ ${exit_label}`);
+		}
 		visit(node.body)
 
 		emit_code(`\tJMP ${loop_label}`);
 		emit_code(`${exit_label}:`)
+	},
+	break_stmt: (node, visit)=>{
+		let exit_label = get_key_up(node, 'exit_label')
+		if(exit_label)
+			emit_code(`\tJMP ${exit_label}`);
+	},
+	continue_stmt: (node, visit)=>{
+		let loop_label = get_key_up(node, 'loop_label')
+		if(loop_label)
+			emit_code(`\tJMP ${loop_label}`);
 	},
 	common: (node, visit) => {
 		if (node.label) {
