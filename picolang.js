@@ -29,6 +29,7 @@ let token = {
 	WHILE: 'WHILE',
 	CONTINUE: 'CONTINUE',
 	BREAK: 'BREAK',
+	RETURN: 'RETURN',
 
 	DEF: 'DEF'
 }
@@ -40,6 +41,7 @@ let keywords = {
 	'while': token.WHILE,
 	'continue': token.CONTINUE,
 	'break': token.BREAK,
+	'return': token.RETURN,
 }
 
 let datatypes = {
@@ -156,7 +158,7 @@ function clone_ast(ast) {
 	}
 
 	if (Array.isArray(ast)) {
-		return [...ast];
+		return ast.map(n=>clone_ast(n));
 	}
 
 	var temp = {}
@@ -444,25 +446,32 @@ function make_parser(tokens) {
 		}
 		while(true)
 		{
-			if (tok.type === token.BREAK) {
+			switch(tok.type) {
+			case token.BREAK:
 				consume(token.BREAK)
 				n.value.push({
 					type: 'break_stmt'
 				})
-				continue;
-			} else if (tok.type === token.CONTINUE) {
+				continue
+			case token.CONTINUE:
 				consume(token.CONTINUE)
 				n.value.push({
 					type: 'continue_stmt'
 				})
+				continue
+			case token.RETURN:
+				n.value.push(parse_return_expr())
 				continue;
-			} 
+			}
+
 			let expr = parse_expr()
 			if (!expr) {
 				break
 			}
+
 			if (tok.type === 'eof')
 				break
+
 			n.value.push(expr)
 		}
 		return n
@@ -542,6 +551,15 @@ function make_parser(tokens) {
 		}
 	}
 
+	function parse_return_expr() {
+		consume(token.RETURN)
+		let value = parse_expr();
+		return {
+			type: 'return_expr',
+			value
+		}
+	}
+
 	return function() {
 		let n = {
 			type: 'comp_unit',
@@ -607,6 +625,16 @@ let literals_optimization_pass = {
 			}
 		}
 	},
+	expr_list: (node, visit)=>{
+		for(let i = 0 ; i < node.value.length ; i++) {
+			node.value[i] = visit(node.value[i])
+		}
+		let last_node = node.value[node.value.length-1]
+		if (last_node.type === 'return_expr') {
+			node.value[node.value.length-1] = last_node.value
+		}
+		return node
+	},
 	// while_expr: (node, visit)=>{
 	// 	node.cond = visit(node.cond);
 	// 	if (node.cond !== undefined && node.cond.type == 'number_literal_expr') {
@@ -653,8 +681,7 @@ function instantiate_template(node, name, arg_types) {
 	inst_sym.node.prototype.name.name = fn_name
 	inst_sym.node.prototype.arg_types = arg_types
 	inst_sym.node.st.symbols = {}
-	add_parent_links(inst_sym.node)
-	inst_sym.node.parent = node.parent
+	add_parent_links(inst_sym.node, node.parent)
 	// console.log(sym.node)
 	return inst_sym
 }
@@ -876,6 +903,10 @@ let codegen_pass = {
 	break_stmt: (node, visit)=>{
 		return node
 	},
+	return_expr: (node, visit)=>{
+		node.value = visit(node.value)
+		return node
+	},
 	continue_stmt: (node, visit)=>{
 		return node
 	},
@@ -973,6 +1004,10 @@ let code_emitter = {
 		if(loop_label)
 			emit_code(`\tJMP ${loop_label}`);
 	},
+	return_expr: (node, visit)=>{
+		visit(node.value)
+		emit_code(`\tRET`);
+	},
 	common: (node, visit) => {
 		if (node.label) {
 			emit_code(`${node.label}:`)
@@ -1004,6 +1039,8 @@ function make_visitor(visitor) {
 }
 
 function add_parent_links(node, parent) {
+	//console.log('----')
+	//console.log(node.type, '  ', node.name)
 	if(!node || !node.hasOwnProperty('type')) {
 		return
 	}
