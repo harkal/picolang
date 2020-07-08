@@ -3,7 +3,9 @@
   "version": "0.0.1",
   "description": "",
   "main": "picolang.js",
-  "dependencies": {},
+  "dependencies": {
+    "commander": "^5.1.0"
+  },
   "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -12,7 +14,11 @@
     "type": "git",
     "url": "https://github.com/harkal/picolang.git"
   },
-  "keywords": ["compiler", "embed", "language"],
+  "keywords": [
+    "compiler",
+    "embed",
+    "language"
+  ],
   "author": "Harry Kalogirou (harkal@nlogn.eu)",
   "license": "MIT"
 }
