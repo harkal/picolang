@@ -2,7 +2,7 @@
 =======================================================================================
 
 This project provides a small high level compiler that targets the embeddedable virtual machine 
-(https://github.com/harkal/picovm).
+(https://github.com/harkal/picovm). 
 
 Features
 --------
@@ -12,6 +12,13 @@ Features
 * Compiles to binary code, not interpreted
 * Generics/templates support (take that Golang! :P)
 * Inline assembly support
+
+The compiler itself is coded in Javascript in order to be easily used by web apps and electron 
+apps that configure programmable microcontrollers.
+
+Having said that, the compiler is super-alpha™ code. The bulk of the code was written over a
+weekend as a challenge to myself. For example error reporting is simply not there right now.
+Of course, as I continue to work on it, I will get this updated. 
 
 Example
 -------
@@ -159,3 +166,4 @@ We compile and run the above code in PicoVM and we get this result:
 
 Executed 13518344 instructions
 ```
+
