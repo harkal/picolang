@@ -15,7 +15,7 @@ function compile(sources, cmd) {
 
 	let asm_code = ''
 	try {
-		asm_code = compile_source(source_code)
+		asm_code = compile_source(source_code, sources[0])
 
 		let outFile = cmd.output
 		if (!outFile)outFile = 'out.asm'
