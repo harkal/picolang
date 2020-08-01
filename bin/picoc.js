@@ -15,7 +15,7 @@ function compile(sources, cmd) {
 
 	let asm_code = ''
 	try {
-		asm_code = compile_source(source_code, sources[0])
+		asm_code = compile_source(source_code, sources[0], cmd)
 
 		let outFile = cmd.output
 		if (!outFile)outFile = 'out.asm'
@@ -52,9 +52,13 @@ function main() {
 
 	program
 		.command('compile [sources...]', { isDefault: true })
+
 		.option('-o, --output <output>', 'output file')
 		.option('-a, --asm', 'output assembly')
 		.option('-s, --stdout', 'emit code on stdout')
+
+		.option('-O, --opt <level>', 'Optimization level', )
+
 		.action(compile)
 
 	program.parse(process.argv)    
